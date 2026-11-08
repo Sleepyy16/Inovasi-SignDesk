@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+data/raw_images/*
+!data/raw_images/.gitkeep
+models/*
+!models/.gitkeep
