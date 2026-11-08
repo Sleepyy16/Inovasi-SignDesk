@@ -189,6 +189,14 @@ def ekstrak_dataset(
                 gagal_per_huruf[label] += 1
                 continue
 
+            # Tentukan sumber data
+            if nama_file.startswith("mendeley_"):
+                sumber_aktual = "mendeley"
+            elif "body" in nama_file.lower() or "wall" in nama_file.lower():
+                sumber_aktual = "citra_bisindo"
+            else:
+                sumber_aktual = sumber_data
+
             # Ekstrak fitur landmark
             fitur, _ = ekstrak_fitur(img, detektor)
 
@@ -198,7 +206,7 @@ def ekstrak_dataset(
             else:
                 sukses_per_huruf[label] += 1
                 # Susun satu baris data: [label, person_id, source, f_000, ..., f_126]
-                baris = [label, pid, sumber_data] + fitur.tolist()
+                baris = [label, pid, sumber_aktual] + fitur.tolist()
                 baris_csv.append(baris)
 
             # Tampilkan progress bar setiap 5 gambar atau di akhir

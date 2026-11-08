@@ -21,7 +21,8 @@ data/
 
 | Sumber | Nama Dataset | URL / DOI | Lisensi | Sitasi |
 |--------|-------------|-----------|---------|--------|
-| Citra BISINDO (Dataset Lokal) | Citra BISINDO (312 gambar A-Z) | Folder `DataSet/Citra BISINDO` | Riset Akademik | Tim / Sumber Terkait |
+| Citra BISINDO (Dataset Lokal 1) | Citra BISINDO (312 gambar A-Z) | Folder `DataSet/Citra BISINDO` | Riset Akademik | Tim / Sumber Terkait |
+| Mendeley Data (Dataset Lokal 2) | BISINDO SIGN LANGUAGE RECOGNITION (936 gambar A-Z) | Mendeley Data | CC BY 4.0 | Mendeley Data Contributor |
 | Rekaman sendiri | Data internal webcam (`landmarks_kamera.csv`) | - | Milik tim, sudah ada persetujuan | - |
 
 ## Cara Mengunduh Dataset Publik
