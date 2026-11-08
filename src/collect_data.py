@@ -3,12 +3,15 @@ SignDesk - src/collect_data.py
 ==============================
 Skrip webcam interaktif untuk merekam data landmark tangan sendiri.
 
-FITUR UTAMA (HANDS-FREE AUTO-RECORD):
--------------------------------------
-- Deteksi stabilitas pose otomatis: Begitu tangan masuk ke bingkai dan diam
-  selama >= 1 detik, sistem langsung otomatis merekam tanpa perlu menekan tombol!
-- Dilengkapi countdown visual di layar dan audio beep lembut (feedback suara).
-- Tombol SPASI tetap tersedia sebagai opsi manual.
+FITUR UTAMA:
+------------
+- HANDS-FREE AUTO-RECORD: Tahan posisi tangan diam selama >= 1 detik,
+  sistem otomatis merekam tanpa perlu menekan tombol apa pun!
+- UNDO & ANTI-SALAH:
+  * BACKSPACE / U : Batalkan rekaman pose terakhir jika salah pose
+  * C             : Hapus semua rekaman huruf aktif pada sesi ini
+  * ESC           : KELUAR TANPA MENYIMPAN (buang semua rekaman sesi ini)
+  * Q             : SIMPAN data sesi ini ke CSV lalu keluar
 
 KEBIJAKAN PRIVASI & ETIKA:
 -------------------------
@@ -16,14 +19,6 @@ KEBIJAKAN PRIVASI & ETIKA:
   disimpan sebagai file video atau gambar ke disk.
 - Hanya koordinat angka landmark (127 fitur numerik) + label huruf + person_id
   yang dicatat ke file CSV.
-
-KONTROL TOMBOL:
----------------
-- M            : Ganti mode (AUTO HANDS-FREE vs MANUAL SPASI)
-- Panah / [ ]  : Pindah ke huruf sebelumnya / berikutnya
-- A - Z        : Langsung pilih huruf target
-- SPASI        : Rekam manual (jika dalam mode manual)
-- Q            : Simpan data ke CSV lalu keluar
 """
 
 import sys
@@ -113,8 +108,7 @@ def hitung_pergeseran_pose(fitur_sekarang: np.ndarray, fitur_sebelumnya: np.ndar
     apakah tangan sedang bergerak atau diam (stabil).
     """
     if fitur_sekarang is None or fitur_sebelumnya is None:
-        return 1.0  # Anggap bergerak jika salah satu tidak ada
-    # Bandingkan koordinat tangan (indeks 0 s.d. 125, abaikan fitur jumlah tangan ke-126)
+        return 1.0
     diff = np.mean(np.abs(fitur_sekarang[:126] - fitur_sebelumnya[:126]))
     return float(diff)
 
@@ -129,7 +123,8 @@ def gambar_hud(
     sedang_merekam: bool,
     mode_otomatis: bool,
     progres_stabil: float,
-    pesan_petunjuk: str
+    pesan_petunjuk: str,
+    pesan_notifikasi: str = ""
 ):
     """
     Menggambar panel status interaktif (HUD) di frame webcam.
@@ -138,7 +133,7 @@ def gambar_hud(
 
     # Panel atas semi-transparan
     overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (w, 135), (20, 20, 20), -1)
+    cv2.rectangle(overlay, (0, 0), (w, 140), (20, 20, 20), -1)
     # Panel bawah
     cv2.rectangle(overlay, (0, h - 45), (w, h), (20, 20, 20), -1)
     cv2.addWeighted(overlay, 0.72, frame, 0.28, 0, frame)
@@ -162,7 +157,6 @@ def gambar_hud(
     warna_status = (0, 255, 0) if "Terdeteksi" in status_tangan else (0, 165, 255)
     cv2.putText(frame, status_tangan, (15, 94), cv2.FONT_HERSHEY_SIMPLEX, 0.55, warna_status, 1, cv2.LINE_AA)
 
-    # Bar Countdown Stabilitas (hanya di mode otomatis)
     if mode_otomatis:
         bar_x, bar_y, bar_w, bar_h = 240, 80, 200, 16
         cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (80, 80, 80), -1)
@@ -175,22 +169,26 @@ def gambar_hud(
         teks_tahan = "Tahan Posisi..." if progres_stabil < 1.0 else "MEREKAM!"
         cv2.putText(frame, teks_tahan, (bar_x + bar_w + 10, 94), cv2.FONT_HERSHEY_SIMPLEX, 0.5, warna_bar, 1, cv2.LINE_AA)
 
-    # 4. Baris 4: Pesan Petunjuk Dinamis
-    cv2.putText(frame, pesan_petunjuk, (15, 122), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (130, 255, 255), 1, cv2.LINE_AA)
+    # 4. Baris 4: Pesan Notifikasi (Undo/Hapus) atau Petunjuk Dinamis
+    if pesan_notifikasi:
+        cv2.putText(frame, pesan_notifikasi, (15, 124), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (50, 150, 255), 2, cv2.LINE_AA)
+    else:
+        cv2.putText(frame, pesan_petunjuk, (15, 124), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (130, 255, 255), 1, cv2.LINE_AA)
 
     # 5. Indikator Perekaman Merah Aktif
     if sedang_merekam:
         cv2.circle(frame, (w - 30, 85), 12, (0, 0, 255), -1)
         cv2.putText(frame, "REKAM", (w - 110, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2, cv2.LINE_AA)
 
-    # 6. Panel Bawah: Panduan Tombol
-    teks_kontrol = "Panah/[ ]: Ganti Huruf | A-Z: Pilih | M: Toggle Auto | Q: Simpan"
-    cv2.putText(frame, teks_kontrol, (15, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+    # 6. Panel Bawah: Panduan Tombol Lengkap (Termasuk Undo & Batal)
+    teks_kontrol = "Panah/A-Z: Huruf | Backspace/U: Undo | C: Reset Huruf | Q: Simpan | ESC: Batal"
+    cv2.putText(frame, teks_kontrol, (15, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
 
 
 def rekam_data_webcam():
     """
-    Fungsi utama pengumpulan data dengan dukungan Hands-Free Auto-Record.
+    Fungsi utama pengumpulan data dengan dukungan Hands-Free Auto-Record,
+    fitur Undo, dan pembatalan penyimpanan.
     """
     person_id = tampilkan_persetujuan_dan_minta_id()
     if not person_id:
@@ -218,26 +216,35 @@ def rekam_data_webcam():
     daftar_huruf = config.HURUF_DIDUKUNG
     idx_huruf = 0
     sampel_sesi = defaultdict(int)
-    buffer_rekaman = []
+    buffer_rekaman = []  # Menyimpan baris data sesi ini
+
+    # Riwayat batch perekaman untuk fungsi Undo: list of (huruf, jumlah_sampel)
+    riwayat_batch = []
+
+    # Kontrol Notifikasi Layar
+    teks_notifikasi = ""
+    waktu_notifikasi = 0.0
 
     # Variabel Kontrol Auto-Record
-    mode_otomatis = True  # Default: Hands-free aktif!
+    mode_otomatis = True
     fitur_sebelumnya = None
     waktu_mulai_stabil = None
     jumlah_burst_saat_ini = 0
     waktu_terakhir_burst = 0.0
     waktu_terakhir_rekam = 0.0
-    wajib_gerak_dulu = False  # Mencegah over-recording pose yang sama tanpa jeda
+    wajib_gerak_dulu = False
 
     durasi_indikator_rekam = 0.25
+    simpan_saat_keluar = False  # Hanya True jika user menekan 'Q'
 
-    print("\n✅ Mode Hands-Free Aktif!")
+    print("\n✅ Kamera aktif dalam mode Hands-Free Auto-Record!")
     print("-----------------------------------------------------------------")
-    print("💡 CARA PAKAI:")
-    print("   1. Bentuk pose huruf isyarat di depan kamera.")
-    print("   2. TAHAN DIAM selama 1 detik -> Sistem otomatis merekam (ada bunyi beep)!")
-    print("   3. Setelah bunyi beep, ubah sudut/jarak tangan sedikit untuk pose berikutnya.")
-    print("   4. Tekan Panah Kanan atau ketik huruf untuk berpindah huruf.")
+    print("💡 PANDUAN PENGONTROLAN:")
+    print("   - Tahan tangan diam 1 detik -> Otomatis rekam 8 sampel (ada bunyi beep)")
+    print("   - Tombol BACKSPACE atau 'U' -> Batalkan/Undo pose terakhir")
+    print("   - Tombol 'C'                -> Hapus semua rekaman huruf saat ini di sesi ini")
+    print("   - Tombol 'Q'                -> SIMPAN ke CSV dan selesai")
+    print("   - Tombol 'ESC'              -> KELUAR TANPA SIMPAN (buang semua)")
     print("-----------------------------------------------------------------\n")
 
     try:
@@ -259,6 +266,9 @@ def rekam_data_webcam():
             progres_stabil = 0.0
             pesan_petunjuk = "Bentuk pose tangan di depan kamera..."
 
+            # Periksa apakah notifikasi banner masih aktif (tampil selama 2 detik)
+            pesan_notifikasi_aktif = teks_notifikasi if (waktu_sekarang - waktu_notifikasi < 2.0) else ""
+
             if fitur is None:
                 status_tangan = "Tangan Tidak Terdeteksi"
                 waktu_mulai_stabil = None
@@ -269,19 +279,16 @@ def rekam_data_webcam():
                 jumlah_tangan = int(fitur[-1])
                 status_tangan = f"{jumlah_tangan} Tangan Terdeteksi"
 
-                # Hitung pergeseran tangan
                 pergeseran = hitung_pergeseran_pose(fitur, fitur_sebelumnya)
                 fitur_sebelumnya = fitur.copy()
 
                 if pergeseran > AMBANG_GERAKAN_STABIL:
-                    # Tangan sedang bergerak
                     waktu_mulai_stabil = None
                     wajib_gerak_dulu = False
                     pesan_petunjuk = "Gerakan terdeteksi... Tahan diam posisi tangan"
                 else:
-                    # Tangan relatif diam
                     if wajib_gerak_dulu:
-                        pesan_petunjuk = "✓ Sampel tersimpan! Ubah sudut/posisi tangan sedikit untuk sampel baru"
+                        pesan_petunjuk = "✓ Tersimpan! Ubah posisi/sudut tangan sedikit untuk pose baru"
                     else:
                         if waktu_mulai_stabil is None:
                             waktu_mulai_stabil = waktu_sekarang
@@ -292,7 +299,7 @@ def rekam_data_webcam():
                         if durasi_stabil < DURASI_STABIL_DETIK:
                             pesan_petunjuk = f"Tahan posisi... ({int(progres_stabil * 100)}%)"
                         else:
-                            # --- TRIGGER OTOMATIS: Pose stabil >= 1.0 detik ---
+                            # TRIGGER AUTO-RECORD
                             pesan_petunjuk = "📸 Merekam pose stabil!"
                             if mode_otomatis and (waktu_sekarang - waktu_terakhir_burst >= config.INTERVAL_REKAM_DETIK):
                                 baris = [huruf_aktif, person_id, "webcam"] + fitur.tolist()
@@ -302,13 +309,13 @@ def rekam_data_webcam():
                                 waktu_terakhir_burst = waktu_sekarang
                                 waktu_terakhir_rekam = waktu_sekarang
 
-                                # Berikan feedback suara beep lembut
                                 if jumlah_burst_saat_ini == 1:
                                     bunyikan_beep(1400, 80)
 
-                                # Batasi per satu pose stabil maksimal MAX_BURST_PER_POSE sampel
                                 if jumlah_burst_saat_ini >= MAX_BURST_PER_POSE:
                                     bunyikan_beep(900, 100)
+                                    # Catat riwayat batch untuk fitur Undo
+                                    riwayat_batch.append((huruf_aktif, jumlah_burst_saat_ini))
                                     wajib_gerak_dulu = True
                                     jumlah_burst_saat_ini = 0
                                     waktu_mulai_stabil = None
@@ -324,27 +331,75 @@ def rekam_data_webcam():
                 sedang_merekam=sedang_merekam,
                 mode_otomatis=mode_otomatis,
                 progres_stabil=progres_stabil,
-                pesan_petunjuk=pesan_petunjuk
+                pesan_petunjuk=pesan_petunjuk,
+                pesan_notifikasi=pesan_notifikasi_aktif
             )
 
-            cv2.imshow("SignDesk - Perekaman Hands-Free (Tekan Q untuk Simpan)", frame)
+            cv2.imshow("SignDesk - Perekaman Hands-Free (Q: Simpan | ESC: Batal)", frame)
 
             # Baca input keyboard
             key_raw = cv2.waitKeyEx(1)
             key = key_raw & 0xFF if key_raw != -1 else -1
 
-            # Keluar
-            if key in (ord('q'), ord('Q'), 27):
-                print("\n⏹️ Menyimpan data dan menutup kamera...")
+            # 1. SIMPAN DAN KELUAR (Q)
+            if key in (ord('q'), ord('Q')):
+                print("\n💾 Menekan 'Q': Menyimpan data sesi ini ke CSV...")
+                simpan_saat_keluar = True
                 break
 
-            # Toggle Mode (Auto vs Manual)
+            # 2. KELUAR TANPA SIMPAN (ESC)
+            elif key == 27:
+                print("\n🚫 Menekan 'ESC': KELUAR TANPA MENYIMPAN. Semua data sesi ini dibuang!")
+                simpan_saat_keluar = False
+                break
+
+            # 3. UNDO POSE TERAKHIR (BACKSPACE atau U)
+            elif key in (8, ord('u'), ord('U')):
+                if riwayat_batch:
+                    huruf_batal, jml_batal = riwayat_batch.pop()
+                    # Buang jml_batal baris terakhir dari buffer
+                    buffer_rekaman = buffer_rekaman[:-jml_batal]
+                    sampel_sesi[huruf_batal] = max(0, sampel_sesi[huruf_batal] - jml_batal)
+                    teks_notifikasi = f"↩️ UNDO: {jml_batal} sampel huruf {huruf_batal} dibatalkan!"
+                    waktu_notifikasi = waktu_sekarang
+                    bunyikan_beep(500, 150)
+                    print(f"\n↩️ {teks_notifikasi}")
+                elif buffer_rekaman:
+                    # Jika ada sisa rekaman single-shot (manual)
+                    baris_terakhir = buffer_rekaman.pop()
+                    huruf_batal = baris_terakhir[0]
+                    sampel_sesi[huruf_batal] = max(0, sampel_sesi[huruf_batal] - 1)
+                    teks_notifikasi = f"↩️ UNDO: 1 sampel huruf {huruf_batal} dibatalkan!"
+                    waktu_notifikasi = waktu_sekarang
+                    bunyikan_beep(500, 150)
+                else:
+                    teks_notifikasi = "⚠️ Belum ada sampel yang bisa di-Undo."
+                    waktu_notifikasi = waktu_sekarang
+
+            # 4. KOSONGKAN REKAMAN HURUF INI DI SESI INI (Tombol 'C')
+            elif key in (ord('c'), ord('C')):
+                jml_hapus = sampel_sesi[huruf_aktif]
+                if jml_hapus > 0:
+                    # Hapus semua baris huruf_aktif dari buffer
+                    buffer_rekaman = [b for b in buffer_rekaman if b[0] != huruf_aktif]
+                    riwayat_batch = [r for r in riwayat_batch if r[0] != huruf_aktif]
+                    sampel_sesi[huruf_aktif] = 0
+                    teks_notifikasi = f"🗑️ Bersih: {jml_hapus} sampel sesi ini untuk '{huruf_aktif}' dihapus!"
+                    waktu_notifikasi = waktu_sekarang
+                    bunyikan_beep(400, 200)
+                    print(f"\n🗑️ {teks_notifikasi}")
+                else:
+                    teks_notifikasi = f"ℹ️ Huruf '{huruf_aktif}' belum punya sampel di sesi ini."
+                    waktu_notifikasi = waktu_sekarang
+
+            # 5. TOGGLE MODE (Auto vs Manual)
             elif key in (ord('m'), ord('M')):
                 mode_otomatis = not mode_otomatis
                 waktu_mulai_stabil = None
-                print(f"🔄 Mode diganti ke: {'AUTO HANDS-FREE' if mode_otomatis else 'MANUAL SPASI'}")
+                teks_notifikasi = f"Mode: {'AUTO HANDS-FREE' if mode_otomatis else 'MANUAL SPASI'}"
+                waktu_notifikasi = waktu_sekarang
 
-            # Rekam manual dengan SPASI (backup jika ingin manual)
+            # 6. REKAM MANUAL (SPASI)
             elif key == ord(' '):
                 if waktu_sekarang - waktu_terakhir_rekam >= config.INTERVAL_REKAM_DETIK:
                     if fitur is not None:
@@ -354,21 +409,19 @@ def rekam_data_webcam():
                         waktu_terakhir_rekam = waktu_sekarang
                         bunyikan_beep(1200, 60)
 
-            # Navigasi huruf berikutnya: Panah Kanan / Down / ']' / '.'
+            # 7. NAVIGASI HURUF
             elif key_raw in (2555904, 2621440, 65363, 65364) or key in (ord(']'), ord('.'), ord('>')):
                 idx_huruf = (idx_huruf + 1) % len(daftar_huruf)
                 waktu_mulai_stabil = None
                 jumlah_burst_saat_ini = 0
                 wajib_gerak_dulu = False
 
-            # Navigasi huruf sebelumnya: Panah Kiri / Up / '[' / ','
             elif key_raw in (2424832, 2490368, 65361, 65362) or key in (ord('['), ord(','), ord('<')):
                 idx_huruf = (idx_huruf - 1) % len(daftar_huruf)
                 waktu_mulai_stabil = None
                 jumlah_burst_saat_ini = 0
                 wajib_gerak_dulu = False
 
-            # Langsung lompat ke huruf tertentu (Ketik A s.d. Z)
             elif ord('a') <= key <= ord('z') or ord('A') <= key <= ord('Z'):
                 huruf_input = chr(key).upper()
                 if huruf_input in daftar_huruf:
@@ -382,31 +435,38 @@ def rekam_data_webcam():
         detektor.close()
         cv2.destroyAllWindows()
 
-    # Simpan hasil sesi ini ke file CSV (mode APPEND)
-    total_didapat = len(buffer_rekaman)
-    if total_didapat > 0:
-        os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
-        file_baru = not os.path.exists(csv_path)
+    # Eksekusi Penyimpanan
+    if simpan_saat_keluar:
+        total_didapat = len(buffer_rekaman)
+        if total_didapat > 0:
+            os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
+            file_baru = not os.path.exists(csv_path)
 
-        kolom = ["label", "person_id", "source"] + nama_kolom_fitur()
-        df_baru = pd.DataFrame(buffer_rekaman, columns=kolom)
+            kolom = ["label", "person_id", "source"] + nama_kolom_fitur()
+            df_baru = pd.DataFrame(buffer_rekaman, columns=kolom)
 
-        df_baru.to_csv(csv_path, mode="a", header=file_baru, index=False)
+            df_baru.to_csv(csv_path, mode="a", header=file_baru, index=False)
 
-        print("\n" + "=" * 65)
-        print("💾 RINGKASAN DATA BERHASIL DISIMPAN (MODE APPEND)")
-        print("=" * 65)
-        print(f"File Target  : {csv_path}")
-        print(f"Penutur      : {person_id}")
-        print(f"Total Sampel : +{total_didapat} baris fitur baru ditambahkan\n")
-        print("Rincian per huruf sesi ini:")
-        for h in sorted(sampel_sesi.keys()):
-            tot_lama = total_per_huruf[h]
-            tot_baru = sampel_sesi[h]
-            print(f"  - Huruf {h} : +{tot_baru} sampel (Total keseluruhan: {tot_lama + tot_baru})")
-        print("=" * 65)
+            print("\n" + "=" * 65)
+            print("💾 RINGKASAN DATA BERHASIL DISIMPAN (MODE APPEND)")
+            print("=" * 65)
+            print(f"File Target  : {csv_path}")
+            print(f"Penutur      : {person_id}")
+            print(f"Total Sampel : +{total_didapat} baris fitur baru ditambahkan\n")
+            print("Rincian per huruf sesi ini:")
+            for h in sorted(sampel_sesi.keys()):
+                if sampel_sesi[h] > 0:
+                    tot_lama = total_per_huruf[h]
+                    tot_baru = sampel_sesi[h]
+                    print(f"  - Huruf {h} : +{tot_baru} sampel (Total keseluruhan: {tot_lama + tot_baru})")
+            print("=" * 65)
+        else:
+            print("\nℹ️ Tidak ada sampel yang terekam pada sesi ini. File CSV tidak berubah.")
     else:
-        print("\nℹ️ Tidak ada sampel yang direkam pada sesi ini. File CSV tidak berubah.")
+        print("\n" + "=" * 65)
+        print("🚫 PEMBATALAN: Data sesi ini TIDAK DISIMPAN ke CSV.")
+        print("   File CSV database lama tetap aman dan tidak mengalami perubahan.")
+        print("=" * 65)
 
 
 if __name__ == "__main__":
