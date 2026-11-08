@@ -1,0 +1,31 @@
+# ============================================================
+# SignDesk - requirements.txt
+# Versi pustaka untuk Python 3.11 (Windows)
+# ============================================================
+
+# Deteksi tangan (MediaPipe)
+mediapipe>=0.10.14
+
+# Pengolahan citra & video
+opencv-contrib-python>=4.10.0.84
+
+# Komputasi numerik
+numpy>=1.26.0,<3.0.0
+
+# Tabel dan CSV data landmark
+pandas>=2.2.0
+
+# Model Machine Learning
+scikit-learn>=1.5.0
+
+# Penyimpanan & pemuatan model
+joblib>=1.4.0
+
+# Visualisasi & grafik evaluasi
+matplotlib>=3.9.0
+
+# Antarmuka web loket
+streamlit>=1.40.0
+
+# Komponen streaming webcam untuk Streamlit
+streamlit-webrtc>=0.47.9

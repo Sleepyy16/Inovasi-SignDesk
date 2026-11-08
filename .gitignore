@@ -1,0 +1,51 @@
+# ============================================================
+# SignDesk - .gitignore
+# File dan folder yang TIDAK masuk ke repository Git.
+# ============================================================
+
+# Lingkungan virtual Python - jangan di-commit, buat sendiri
+.venv/
+venv/
+env/
+
+# Data gambar mentah - bisa sangat besar, unduh sendiri
+# (lihat data/README.md untuk petunjuk sumber dan cara unduh)
+data/raw_images/
+
+# Model terlatih - dibuat dari data, bukan source code
+# KECUALI hand_landmarker.task (model MediaPipe, unduh sendiri jika hilang)
+models/*.joblib
+# Kalau ingin commit hand_landmarker.task, hapus baris di bawah:
+models/hand_landmarker.task
+
+# Cache bytecode Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Cache MediaPipe / OpenCV
+*.cache
+
+# File sementara sistem operasi
+.DS_Store           # macOS
+Thumbs.db           # Windows
+desktop.ini         # Windows
+
+# Log dan file sementara
+*.log
+*.tmp
+
+# IDE dan editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# File konfigurasi lokal (kalau ada nanti)
+.env
+*.local
+
+# Jupyter Notebook (di luar cakupan, tapi berjaga)
+.ipynb_checkpoints/
+*.ipynb
+
